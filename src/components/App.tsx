@@ -175,7 +175,7 @@ export default function App() {
       </main>
 
       <footer className="mt-auto py-6 text-center text-sm text-gray-500">
-        PDFs are processed entirely in your browser. Your files never leave your device.
+        Your uploaded PDFs are removed from the server when you click Reset.
       </footer>
     </div>
   );
