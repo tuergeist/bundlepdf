@@ -17,6 +17,7 @@ import html as html_module
 from typing import Optional
 import json
 import os
+from bs4 import BeautifulSoup, NavigableString
 
 # Register DejaVu fonts for Unicode support (including German umlauts)
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
@@ -57,162 +58,127 @@ def get_cet_timestamp() -> str:
 
 
 def html_to_flowables(html_content: str, styles: dict) -> list:
-    """Convert HTML from TipTap editor to ReportLab flowables."""
+    """Convert HTML from TipTap editor to ReportLab flowables using BeautifulSoup."""
     flowables = []
-
-    # Debug: log incoming HTML
-    print(f"HTML content received: {repr(html_content)}")
 
     if not html_content or not html_content.strip():
         return flowables
 
-    # Simple HTML tag patterns
-    block_pattern = re.compile(r'<(h[1-3]|p|ul|ol|li)[^>]*>(.*?)</\1>', re.DOTALL | re.IGNORECASE)
+    soup = BeautifulSoup(html_content, 'html.parser')
 
-    # Process block elements
-    content = html_content
-
-    # Handle headings and paragraphs
-    def process_inline(text: str) -> str:
-        """Convert inline HTML tags to ReportLab markup."""
-        # Remove nested tags but keep text
-        text = re.sub(r'<strong[^>]*>(.*?)</strong>', r'<b>\1</b>', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'<em[^>]*>(.*?)</em>', r'<i>\1</i>', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'<u[^>]*>(.*?)</u>', r'<u>\1</u>', text, flags=re.IGNORECASE | re.DOTALL)
-        # Remove any other HTML tags
-        text = re.sub(r'<(?!/?[biu]>)[^>]+>', '', text)
-        return text.strip()
-
-    def get_alignment(tag_content: str) -> int:
-        if 'text-align: center' in tag_content or 'text-align:center' in tag_content:
+    def get_alignment(element) -> int:
+        """Extract text alignment from element style."""
+        style = element.get('style', '')
+        if 'text-align: center' in style or 'text-align:center' in style:
             return TA_CENTER
-        elif 'text-align: right' in tag_content or 'text-align:right' in tag_content:
+        elif 'text-align: right' in style or 'text-align:right' in style:
             return TA_RIGHT
         return TA_LEFT
 
-    # Find all block elements
-    pos = 0
-    while pos < len(content):
-        # Try to match block elements
-        h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', content[pos:], re.DOTALL | re.IGNORECASE)
-        h2_match = re.search(r'<h2[^>]*>(.*?)</h2>', content[pos:], re.DOTALL | re.IGNORECASE)
-        h3_match = re.search(r'<h3[^>]*>(.*?)</h3>', content[pos:], re.DOTALL | re.IGNORECASE)
-        p_match = re.search(r'<p[^>]*>(.*?)</p>', content[pos:], re.DOTALL | re.IGNORECASE)
-        ul_match = re.search(r'<ul[^>]*>(.*?)</ul>', content[pos:], re.DOTALL | re.IGNORECASE)
-        ol_match = re.search(r'<ol[^>]*>(.*?)</ol>', content[pos:], re.DOTALL | re.IGNORECASE)
+    def process_inline(element) -> str:
+        """Convert inline elements to ReportLab markup, preserving text."""
+        if isinstance(element, NavigableString):
+            return str(element)
 
-        matches = []
-        if h1_match: matches.append(('h1', h1_match))
-        if h2_match: matches.append(('h2', h2_match))
-        if h3_match: matches.append(('h3', h3_match))
-        if p_match: matches.append(('p', p_match))
-        if ul_match: matches.append(('ul', ul_match))
-        if ol_match: matches.append(('ol', ol_match))
+        result = []
+        for child in element.children:
+            if isinstance(child, NavigableString):
+                result.append(str(child))
+            elif child.name == 'strong' or child.name == 'b':
+                result.append(f'<b>{process_inline(child)}</b>')
+            elif child.name == 'em' or child.name == 'i':
+                result.append(f'<i>{process_inline(child)}</i>')
+            elif child.name == 'u':
+                result.append(f'<u>{process_inline(child)}</u>')
+            else:
+                # For other tags, just get their text content
+                result.append(process_inline(child))
 
-        if not matches:
-            break
+        return ''.join(result).strip()
 
-        # Find the earliest match
-        earliest = min(matches, key=lambda x: x[1].start())
-        tag_type, match = earliest
+    def render_list(list_element, level: int = 0) -> list:
+        """Recursively render list items with proper indentation."""
+        result = []
+        is_ordered = list_element.name == 'ol'
+        bullet_char = '\u2022'
+        item_num = 0
 
-        full_match = match.group(0)
-        inner_content = match.group(1)
-        alignment = get_alignment(full_match)
+        for li in list_element.find_all('li', recursive=False):
+            item_num += 1
 
-        if tag_type == 'h1':
-            style = ParagraphStyle('h1', parent=styles['Heading1'], alignment=alignment)
-            flowables.append(Paragraph(process_inline(inner_content), style))
-            flowables.append(Spacer(1, 6*mm))
-        elif tag_type == 'h2':
-            style = ParagraphStyle('h2', parent=styles['Heading2'], alignment=alignment)
-            flowables.append(Paragraph(process_inline(inner_content), style))
-            flowables.append(Spacer(1, 4*mm))
-        elif tag_type == 'h3':
-            style = ParagraphStyle('h3', parent=styles['Heading3'], alignment=alignment)
-            flowables.append(Paragraph(process_inline(inner_content), style))
-            flowables.append(Spacer(1, 3*mm))
-        elif tag_type == 'p':
-            text = process_inline(inner_content)
+            # Get direct text content (before any nested list)
+            text_parts = []
+            for child in li.children:
+                if isinstance(child, NavigableString):
+                    text_parts.append(str(child))
+                elif child.name in ('ul', 'ol'):
+                    break  # Stop at nested list
+                else:
+                    text_parts.append(process_inline(child))
+
+            text = ''.join(text_parts).strip()
+
             if text:
+                indent = 10 + (level * 10)
+                if is_ordered:
+                    prefix = f"{item_num}.  "
+                else:
+                    prefix = bullet_char + '  '
+
+                style = ParagraphStyle(
+                    f'list_{level}_{item_num}',
+                    parent=styles['Normal'],
+                    leftIndent=indent*mm,
+                    firstLineIndent=-5*mm,
+                )
+                result.append(Paragraph(prefix + text, style))
+                result.append(Spacer(1, 1*mm))
+
+            # Process nested lists
+            for nested_list in li.find_all(['ul', 'ol'], recursive=False):
+                result.extend(render_list(nested_list, level + 1))
+
+        return result
+
+    # Process top-level elements
+    for element in soup.children:
+        if isinstance(element, NavigableString):
+            continue
+
+        tag = element.name
+        if not tag:
+            continue
+
+        if tag == 'h1':
+            alignment = get_alignment(element)
+            style = ParagraphStyle('h1', parent=styles['Heading1'], alignment=alignment)
+            flowables.append(Paragraph(process_inline(element), style))
+            flowables.append(Spacer(1, 6*mm))
+
+        elif tag == 'h2':
+            alignment = get_alignment(element)
+            style = ParagraphStyle('h2', parent=styles['Heading2'], alignment=alignment)
+            flowables.append(Paragraph(process_inline(element), style))
+            flowables.append(Spacer(1, 4*mm))
+
+        elif tag == 'h3':
+            alignment = get_alignment(element)
+            style = ParagraphStyle('h3', parent=styles['Heading3'], alignment=alignment)
+            flowables.append(Paragraph(process_inline(element), style))
+            flowables.append(Spacer(1, 3*mm))
+
+        elif tag == 'p':
+            text = process_inline(element)
+            if text:
+                alignment = get_alignment(element)
                 style = ParagraphStyle('p', parent=styles['Normal'], alignment=alignment)
                 flowables.append(Paragraph(text, style))
                 flowables.append(Spacer(1, 2*mm))
-        elif tag_type in ('ul', 'ol'):
-            # Parse list with nested support using indented paragraphs
-            def render_list(list_content: str, list_type: str, level: int) -> list:
-                """Recursively render list items with proper indentation."""
-                result = []
-                bullet_char = '\u2022' if list_type == 'ul' else None
-                item_num = 0
 
-                # Match <li> tags with nesting awareness
-                li_start_re = re.compile(r'<li[^>]*>', re.IGNORECASE)
-                pos = 0
-                while pos < len(list_content):
-                    start_match = li_start_re.search(list_content, pos)
-                    if not start_match:
-                        break
-
-                    # Find matching </li>
-                    li_start_pos = start_match.end()
-                    depth = 1
-                    i = li_start_pos
-                    while i < len(list_content) and depth > 0:
-                        if list_content[i:i+3].lower() == '<li':
-                            depth += 1
-                        elif list_content[i:i+5].lower() == '</li>':
-                            depth -= 1
-                            if depth == 0:
-                                break
-                        i += 1
-
-                    li_content = list_content[li_start_pos:i]
-                    pos = i + 5
-                    item_num += 1
-
-                    # Check for nested lists
-                    nested_ul = re.search(r'<ul[^>]*>(.*)</ul>', li_content, re.DOTALL | re.IGNORECASE)
-                    nested_ol = re.search(r'<ol[^>]*>(.*)</ol>', li_content, re.DOTALL | re.IGNORECASE)
-
-                    # Get text before any nested list
-                    if nested_ul:
-                        text_part = li_content[:nested_ul.start()]
-                    elif nested_ol:
-                        text_part = li_content[:nested_ol.start()]
-                    else:
-                        text_part = li_content
-
-                    text = process_inline(text_part)
-                    if text:
-                        indent = 10 + (level * 10)
-                        if bullet_char:
-                            prefix = bullet_char + '  '
-                        else:
-                            prefix = f"{item_num}.  "
-
-                        style = ParagraphStyle(
-                            f'list_{level}_{item_num}',
-                            parent=styles['Normal'],
-                            leftIndent=indent*mm,
-                            firstLineIndent=-5*mm,
-                        )
-                        result.append(Paragraph(prefix + text, style))
-                        result.append(Spacer(1, 1*mm))
-
-                    # Process nested list
-                    if nested_ul:
-                        result.extend(render_list(nested_ul.group(1), 'ul', level + 1))
-                    elif nested_ol:
-                        result.extend(render_list(nested_ol.group(1), 'ol', level + 1))
-
-                return result
-
-            list_flowables = render_list(inner_content, tag_type, 0)
+        elif tag in ('ul', 'ol'):
+            list_flowables = render_list(element)
             flowables.extend(list_flowables)
             flowables.append(Spacer(1, 2*mm))
-
-        pos += match.end()
 
     return flowables
 
