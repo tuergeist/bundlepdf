@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bundlepdf
+  labels:
+    app: bundlepdf

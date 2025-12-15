@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bundlepdf-frontend
+  namespace: bundlepdf
+  labels:
+    app: bundlepdf
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bundlepdf
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: bundlepdf
+        component: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/tuergeist/bundlepdf-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bundlepdf-backend
+  namespace: bundlepdf
+  labels:
+    app: bundlepdf
+    component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bundlepdf
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: bundlepdf
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/tuergeist/bundlepdf-backend:latest
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
