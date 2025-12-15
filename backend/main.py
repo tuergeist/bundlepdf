@@ -60,6 +60,9 @@ def html_to_flowables(html_content: str, styles: dict) -> list:
     """Convert HTML from TipTap editor to ReportLab flowables."""
     flowables = []
 
+    # Debug: log incoming HTML
+    print(f"HTML content received: {repr(html_content)}")
+
     if not html_content or not html_content.strip():
         return flowables
 
