@@ -175,7 +175,7 @@ export default function App() {
       </main>
 
       <footer className="mt-auto py-6 text-center text-sm text-gray-500">
-        Your uploaded PDFs are removed from the server when you click Reset.
+        Your PDFs are stored only in your browser. The server processes them in memory and never saves them to disk.
       </footer>
     </div>
   );
