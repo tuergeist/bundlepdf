@@ -23,6 +23,7 @@ spec:
       containers:
         - name: frontend
           image: ghcr.io/tuergeist/bundlepdf-frontend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           resources:
@@ -70,6 +71,7 @@ spec:
       containers:
         - name: backend
           image: ghcr.io/tuergeist/bundlepdf-backend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           resources:
