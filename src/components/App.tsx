@@ -55,10 +55,15 @@ export default function App() {
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">PDF Merger</h1>
-          <p className="text-sm text-gray-600">
-            Create a document with a custom front page and merge multiple PDFs
-          </p>
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="BundlePDF Logo" className="h-10 w-10" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">BundlePDF</h1>
+              <p className="text-sm text-gray-600">
+                Create a document with a custom front page and merge multiple PDFs
+              </p>
+            </div>
+          </div>
         </div>
       </header>
 
