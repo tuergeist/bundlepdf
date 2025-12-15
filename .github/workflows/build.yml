@@ -59,3 +59,26 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}-backend:latest
             ${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-backend]
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl rollout restart deployment/bundlepdf-frontend -n bundlepdf
+          kubectl rollout restart deployment/bundlepdf-backend -n bundlepdf
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/bundlepdf-frontend -n bundlepdf --timeout=120s
+          kubectl rollout status deployment/bundlepdf-backend -n bundlepdf --timeout=120s
