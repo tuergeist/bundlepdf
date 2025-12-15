@@ -136,18 +136,22 @@ def html_to_flowables(html_content: str, styles: dict) -> list:
                 flowables.append(Paragraph(text, style))
                 flowables.append(Spacer(1, 2*mm))
         elif tag_type in ('ul', 'ol'):
-            # Parse list with nested support
-            def parse_list_items(list_content: str, bullet: str, indent: int) -> list:
-                """Recursively parse list items including nested lists."""
-                items = []
-                # Match <li> with proper nesting awareness
-                li_start = re.compile(r'<li[^>]*>', re.IGNORECASE)
+            # Parse list with nested support using indented paragraphs
+            def render_list(list_content: str, list_type: str, level: int) -> list:
+                """Recursively render list items with proper indentation."""
+                result = []
+                bullet_char = '\u2022' if list_type == 'ul' else None
+                item_num = 0
+
+                # Match <li> tags with nesting awareness
+                li_start_re = re.compile(r'<li[^>]*>', re.IGNORECASE)
                 pos = 0
                 while pos < len(list_content):
-                    start_match = li_start.search(list_content, pos)
+                    start_match = li_start_re.search(list_content, pos)
                     if not start_match:
                         break
-                    # Find matching </li> considering nesting
+
+                    # Find matching </li>
                     li_start_pos = start_match.end()
                     depth = 1
                     i = li_start_pos
@@ -159,40 +163,51 @@ def html_to_flowables(html_content: str, styles: dict) -> list:
                             if depth == 0:
                                 break
                         i += 1
-                    li_content = list_content[li_start_pos:i]
-                    pos = i + 5  # skip </li>
 
-                    # Check for nested list
+                    li_content = list_content[li_start_pos:i]
+                    pos = i + 5
+                    item_num += 1
+
+                    # Check for nested lists
                     nested_ul = re.search(r'<ul[^>]*>(.*)</ul>', li_content, re.DOTALL | re.IGNORECASE)
                     nested_ol = re.search(r'<ol[^>]*>(.*)</ol>', li_content, re.DOTALL | re.IGNORECASE)
 
-                    if nested_ul or nested_ol:
-                        # Get text before nested list
-                        if nested_ul:
-                            text_before = li_content[:nested_ul.start()]
-                            nested_content = nested_ul.group(1)
-                            nested_bullet = 'bullet'
-                        else:
-                            text_before = li_content[:nested_ol.start()]
-                            nested_content = nested_ol.group(1)
-                            nested_bullet = '1'
-
-                        text = process_inline(text_before)
-                        if text:
-                            items.append(ListItem(Paragraph(text, styles['Normal']), leftIndent=indent*mm))
-                        # Add nested items with increased indent
-                        items.extend(parse_list_items(nested_content, nested_bullet, indent + 10))
+                    # Get text before any nested list
+                    if nested_ul:
+                        text_part = li_content[:nested_ul.start()]
+                    elif nested_ol:
+                        text_part = li_content[:nested_ol.start()]
                     else:
-                        text = process_inline(li_content)
-                        if text:
-                            items.append(ListItem(Paragraph(text, styles['Normal']), leftIndent=indent*mm))
-                return items
+                        text_part = li_content
 
-            bullet_type = 'bullet' if tag_type == 'ul' else '1'
-            list_items = parse_list_items(inner_content, bullet_type, 0)
-            if list_items:
-                flowables.append(ListFlowable(list_items, bulletType=bullet_type, leftIndent=10*mm))
-                flowables.append(Spacer(1, 2*mm))
+                    text = process_inline(text_part)
+                    if text:
+                        indent = 10 + (level * 10)
+                        if bullet_char:
+                            prefix = bullet_char + '  '
+                        else:
+                            prefix = f"{item_num}.  "
+
+                        style = ParagraphStyle(
+                            f'list_{level}_{item_num}',
+                            parent=styles['Normal'],
+                            leftIndent=indent*mm,
+                            firstLineIndent=-5*mm,
+                        )
+                        result.append(Paragraph(prefix + text, style))
+                        result.append(Spacer(1, 1*mm))
+
+                    # Process nested list
+                    if nested_ul:
+                        result.extend(render_list(nested_ul.group(1), 'ul', level + 1))
+                    elif nested_ol:
+                        result.extend(render_list(nested_ol.group(1), 'ol', level + 1))
+
+                return result
+
+            list_flowables = render_list(inner_content, tag_type, 0)
+            flowables.extend(list_flowables)
+            flowables.append(Spacer(1, 2*mm))
 
         pos += match.end()
 
